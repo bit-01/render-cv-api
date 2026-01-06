@@ -1,27 +1,35 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse
+from flask import Flask, request, send_file, abort
 import tempfile
 import os
 import json
 from utils import render_with_rendercv
 
-app = FastAPI(title="RenderCV API")
+app = Flask(__name__)
 
 
-@app.post("/render")
-async def render_endpoint(file: UploadFile = File(...), options: str = Form(None)):
-    """Accepts a YAML file upload and optional JSON-formatted options (as a form field).
-    Calls RenderCV (python API if available, otherwise CLI) to produce a PDF and returns it.
+@app.route("/render", methods=["POST"])
+def render_endpoint():
+    """Accepts a YAML file upload (form field `file`) and optional JSON-formatted options
+    (form field `options`). Calls RenderCV (python API if available, otherwise CLI) to produce
+    a PDF and returns it as a response.
     """
+    # Ensure file part is present
+    if "file" not in request.files:
+        abort(400, description="Missing 'file' form field")
+
+    upload = request.files["file"]
+    if upload.filename == "":
+        abort(400, description="Empty filename in upload")
+
     # Create a temporary working directory
     tmpdir = tempfile.mkdtemp(prefix="rendercv_")
     try:
-        yml_path = os.path.join(tmpdir, file.filename)
+        yml_path = os.path.join(tmpdir, upload.filename)
         # Save uploaded file
-        with open(yml_path, "wb") as f:
-            f.write(await file.read())
+        upload.save(yml_path)
 
         # Parse options JSON if provided
+        options = request.form.get("options")
         opts = json.loads(options) if options else {}
 
         output_path = os.path.join(tmpdir, "output.pdf")
@@ -30,15 +38,14 @@ async def render_endpoint(file: UploadFile = File(...), options: str = Form(None
         try:
             render_with_rendercv(yml_path, output_path, opts)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Render failed: {e}")
+            abort(500, description=f"Render failed: {e}")
 
         if not os.path.exists(output_path):
-            raise HTTPException(status_code=500, detail="RenderCV did not produce an output file")
+            abort(500, description="RenderCV did not produce an output file")
 
-        # Return file using FileResponse (fast and handles streaming)
-        return FileResponse(output_path, media_type="application/pdf", filename="render.pdf")
+        # Return file using Flask's send_file. We serve as an attachment named render.pdf.
+        return send_file(output_path, mimetype="application/pdf", as_attachment=True, download_name="render.pdf")
     finally:
-        # We intentionally do not remove tmpdir immediately because FileResponse may still be reading the file.
-        # The directory will be left for cleanup by OS or the process lifecycle. If you need aggressive cleanup,
-        # implement a background task to remove it after response completes.
+        # NOTE: we do not remove tmpdir here because WSGI servers may still be reading the file.
+        # If you need aggressive cleanup, run a background thread or external cleaner.
         pass

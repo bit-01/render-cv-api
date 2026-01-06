@@ -1,8 +1,6 @@
 import tempfile
 import os
 
-from fastapi.testclient import TestClient
-
 import main
 import utils
 
@@ -15,18 +13,21 @@ def test_render_endpoint(monkeypatch):
 
     monkeypatch.setattr(utils, "render_with_rendercv", fake_render)
 
-    client = TestClient(main.app)
+    client = main.app.test_client()
 
     tmp = tempfile.NamedTemporaryFile(suffix=".yml", delete=False)
     try:
         tmp.write(b"name: test\n")
         tmp.close()
         with open(tmp.name, "rb") as f:
-            response = client.post("/render", files={"file": ("test.yml", f, "text/yaml")})
+            data = {
+                "file": (f, "test.yml"),
+            }
+            response = client.post("/render", data=data, content_type="multipart/form-data")
 
         assert response.status_code == 200
-        assert response.headers.get("content-type", "").startswith("application/pdf")
-        assert response.content.startswith(b"%PDF-1.4")
+        assert response.headers.get("Content-Type", "").startswith("application/pdf")
+        assert response.data.startswith(b"%PDF-1.4")
     finally:
         try:
             os.unlink(tmp.name)

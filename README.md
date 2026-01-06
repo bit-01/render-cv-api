@@ -22,10 +22,18 @@ pip install -r requirements.txt
 
 Install RenderCV as appropriate for your environment. This README cannot install it for you.
 
-3. Run the API server:
+3. Run the API server (WSGI / Flask):
+
+Using the Flask built-in server for quick testing:
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 9000
+FLASK_APP=main.py flask run --host=0.0.0.0 --port=9000
+```
+
+Or run in production with Gunicorn (WSGI):
+
+```bash
+gunicorn -w 2 -b 0.0.0.0:9000 main:app
 ```
 
 4. Example request (curl):
@@ -34,7 +42,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 9000
 curl -X POST \
   -F "file=@cv.yml;type=text/yaml" \
   -F "options={\"template\":\"modern\"}" \
-  http://localhost:8000/render --output out.pdf
+  http://localhost:9000/render --output out.pdf
 ```
 
 Notes
